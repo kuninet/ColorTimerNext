@@ -1,0 +1,21 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "a28b8073-7bc3-471d-8031-b78c70809010")
+	(paper "A4")
+	(title_block
+		(title "ColorTimer Next")
+		(date "2026-03-04")
+		(rev "1")
+		(company "KUNI-NET")
+		(comment 1 "ESP32を使用したカラータイマー")
+	)
+	(lib_symbols)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)

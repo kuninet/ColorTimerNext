@@ -36,26 +36,51 @@ Resources:
         Enabled: true
 
   # ----------------------------------------------------------------------
-  # API Gateway (HTTP API)
+  # API Gateway (REST API) with API Key
   # ----------------------------------------------------------------------
-  ColorTimerHttpApi:
-    Type: AWS::Serverless::HttpApi
+  ColorTimerApi:
+    Type: AWS::Serverless::Api
     Properties:
-      CorsConfiguration:
-        AllowOrigins:
-          - "*"
-        AllowHeaders:
-          - "*"
-        AllowMethods:
-          - GET
-          - POST
-          - OPTIONS
-        MaxAge: 3600
+      StageName: prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,X-Api-Key'"
+        AllowMethods: "'GET,POST,OPTIONS'"
+      Auth:
+        ApiKeyRequired: true # 全メソッドに対してデフォルトでAPIキーを要求する
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          Description: "ColorTimerNext Usage Plan"
+
+  # ----------------------------------------------------------------------
+  # Receiver Lambda Function
+  # ----------------------------------------------------------------------
+  ReceiverFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/receiver/
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ColorTimerLogsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ColorTimerLogsTable
+      Events:
+        ReceiverApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ColorTimerApi
+            Method: POST
+            Path: /api/logs
 
 Outputs:
   ApiEndpoint:
     Description: "API Gateway endpoint URL"
-    Value: !Sub "https://${ColorTimerHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+    Value: !Sub "https://${ColorTimerApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/logs"
   DynamoDBTableName:
     Description: "DynamoDB Table Name"
     Value: !Ref ColorTimerLogsTable
