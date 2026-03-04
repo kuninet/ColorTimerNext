@@ -77,6 +77,31 @@ Resources:
             Method: POST
             Path: /api/logs
 
+  # ----------------------------------------------------------------------
+  # Fetcher Lambda Function (Get Logs for Dashboard)
+  # ----------------------------------------------------------------------
+  FetcherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/fetcher/
+      Handler: app.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ColorTimerLogsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ColorTimerLogsTable
+      Events:
+        FetcherApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ColorTimerApi
+            Method: GET
+            Path: /api/logs
+
 Outputs:
   ApiEndpoint:
     Description: "API Gateway endpoint URL"

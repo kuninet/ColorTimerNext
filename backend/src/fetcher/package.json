@@ -1,0 +1,11 @@
+{
+    "name": "colortimer-fetcher",
+    "version": "1.0.0",
+    "description": "Lambda function to fetch logs from DynamoDB for ColorTimerNext",
+    "main": "app.mjs",
+    "type": "module",
+    "dependencies": {
+        "@aws-sdk/client-dynamodb": "^3.0.0",
+        "@aws-sdk/lib-dynamodb": "^3.0.0"
+    }
+}
