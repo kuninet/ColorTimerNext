@@ -16,6 +16,7 @@ function App() {
     // 実際の実装時にviteのエンドポイント差し替えを行う
     const API_URL = import.meta.env.VITE_API_URL || '/api/logs';
     const API_KEY = import.meta.env.VITE_API_KEY || '';
+    const DEVICE_ID = import.meta.env.VITE_DEVICE_ID || 'esp32-timer-default';
 
     const fetchLogs = async () => {
       try {
@@ -23,12 +24,15 @@ function App() {
         const response = await axios.get(API_URL, {
           headers: {
             'x-api-key': API_KEY
+          },
+          params: {
+            device_id: DEVICE_ID
           }
         });
 
-        // 取得したデータを新しい順(降順)にならべるなどの処理
-        // API側ですでに降順になっている場合はそのまま
-        const sortedLogs = response.data.items.sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+        // 取得したデータを新しい順(降順)に並べる
+        const items = response.data?.items || [];
+        const sortedLogs = [...items].sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
         setLogs(sortedLogs);
         setError(null);
       } catch (err) {
