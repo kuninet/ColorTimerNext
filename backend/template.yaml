@@ -184,12 +184,14 @@ Resources:
             var request = event.request;
             var headers = request.headers;
             
-            // default: admin:password
-            var expectedAuth = "Basic YWRtaW46cGFzc3dvcmQ=";
+            // Allow multiple users
+            var validAuths = [
+                "Basic YWRtaW46cGFzc3dvcmQ=" // admin:password
+            ];
             
             if (
                 !headers.authorization ||
-                headers.authorization.value !== expectedAuth
+                validAuths.indexOf(headers.authorization.value) === -1
             ) {
                 return {
                     statusCode: 401,
