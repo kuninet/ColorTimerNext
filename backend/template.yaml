@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  ColorTimerNext Backend
+
+  SAM Template for ColorTimer Next Project (API Gateway + DynamoDB)
+
+Globals:
+  Function:
+    Timeout: 5
+    MemorySize: 128
+
+Resources:
+  # ----------------------------------------------------------------------
+  # DynamoDB Table
+  # ----------------------------------------------------------------------
+  ColorTimerLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ColorTimerLogs
+      # オンデマンド課金 (無料枠の範囲内で安価に収めるため)
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: DeviceId
+          AttributeType: S
+        - AttributeName: Timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: DeviceId
+          KeyType: HASH
+        - AttributeName: Timestamp
+          KeyType: RANGE
+      # TTLの設定 (ExpireAt)
+      TimeToLiveSpecification:
+        AttributeName: ExpireAt
+        Enabled: true
+
+  # ----------------------------------------------------------------------
+  # API Gateway (HTTP API)
+  # ----------------------------------------------------------------------
+  ColorTimerHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        MaxAge: 3600
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ColorTimerHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  DynamoDBTableName:
+    Description: "DynamoDB Table Name"
+    Value: !Ref ColorTimerLogsTable
