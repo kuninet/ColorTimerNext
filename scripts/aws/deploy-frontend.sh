@@ -1,14 +1,20 @@
 #!/bin/bash
 set -e
 
-# SAMで出力したS3バケット名とCloudFrontディストリビューションIDを取得
-cd backend
-echo "Fetching AWS SAM outputs..."
-export S3_BUCKET=$(sam list outputs --stack-name ColorTimerNext --region ap-northeast-1 --output json | jq -r '.[] | select(.OutputKey=="FrontendBucketName") | .OutputValue')
-export CLOUDFRONT_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items==null && Origins.Items[0].Id=='FrontendS3Origin'].Id | [0]" --output text)
+STACK_NAME=${STACK_NAME:-colortimernext-prod}
+REGION=${AWS_DEFAULT_REGION:-ap-northeast-1}
+
+echo "Fetching CloudFormation outputs for stack: $STACK_NAME ..."
+OUTPUTS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query "Stacks[0].Outputs" --output json)
+
+export S3_BUCKET=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="FrontendBucketName") | .OutputValue')
+export CLOUDFRONT_DOMAIN=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="CloudFrontDomainName") | .OutputValue')
+
+# CloudFront Distribution ID を ドメイン名から逆引き
+export CLOUDFRONT_ID=$(aws cloudfront list-distributions --region "$REGION" --query "DistributionList.Items[?DomainName=='$CLOUDFRONT_DOMAIN'].Id | [0]" --output text)
 
 if [ -z "$S3_BUCKET" ] || [ "$S3_BUCKET" == "null" ]; then
-  echo "Error: FrontendBucketName not found in SAM outputs. Is the backend stack deployed?"
+  echo "Error: FrontendBucketName not found in stack outputs. Is the backend stack deployed?"
   exit 1
 fi
 
@@ -16,7 +22,7 @@ echo "S3 Bucket: $S3_BUCKET"
 echo "CloudFront ID: $CLOUDFRONT_ID"
 
 # フロントエンドのビルド
-cd ../frontend
+cd frontend
 echo "Building React frontend..."
 npm install
 npm run build
