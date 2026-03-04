@@ -1,4 +1,6 @@
+#include "HardwareConfig.h"
 #include <Arduino.h>
+#include <Bounce2.h>
 #include <Preferences.h>
 #include <WiFiManager.h>
 
@@ -18,22 +20,29 @@ char apiKey[64] = "your_api_key_here";
 
 bool shouldSaveConfig = false;
 
+// 稼働ステート管理
+enum TimerState { STATE_STANDBY, STATE_RUNNING };
+TimerState currentState = STATE_STANDBY;
+
+// ボタンのデバウンス用インスタンス
+Bounce debouncer = Bounce();
+
 // WiFiManagerの設定が保存された際に呼ばれるコールバック
 void saveConfigCallback() {
   Serial.println("Should save config");
   shouldSaveConfig = true;
 }
 
-// ... (後続のIssue
-// 5で定義予定ですが、今回はリセット用にボタンのピン定義を先行追加します)
-const int BUTTON_PIN = 33;
-
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\nStarting ColorTimer Next...");
 
-  // 初期化リセット用ボタンの設定
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  // ハードウェアピン等の初期化 (OLED, LED, Buzzer)
+  initHardware();
+
+  // 初期化リセット用ボタンの設定とBounce2へのアタッチ
+  debouncer.attach(BUTTON_PIN, INPUT_PULLUP);
+  debouncer.interval(25); // 25msのデバウンス
 
   // Preferencesの初期化 (読み書きモード)
   preferences.begin(PREF_NAMESPACE, false);
@@ -43,25 +52,27 @@ void setup() {
   wm.setSaveConfigCallback(saveConfigCallback);
 
   // 起動時にボタン(GPIO33)がLOW(押されている状態)なら設定を初期化する
-  // 誤動作防止のため、少し待ってから再度判定する
-  delay(100);
-  if (digitalRead(BUTTON_PIN) == LOW) {
+  debouncer.update();
+  if (debouncer.read() == LOW) {
+    displayStatus("RESETTING", "Clearing Settings");
     Serial.println("Reset button is pressed! Clearing all settings...");
-    // Preferences (フラッシュメモリの独自保存データ) をクリア
+    playBeep(500);
     preferences.clear();
-    // WiFiManager (Wi-Fi資格情報) をクリア
     wm.resetSettings();
+    displayStatus("CLEARED", "Please Reboot.");
     Serial.println(
         "Settings cleared. Please connect to 'ColorTimer-AP' to reconfigure.");
+    while (true) {
+      delay(100);
+    } // 停止
   }
 
-  // フラッシュメモリからの設定読み出し (存在しなければデフォルト値)
+  // フラッシュメモリからの設定読み出し
   String savedDeviceId = preferences.getString(PREF_DEVICE_ID, deviceId);
   String savedApiEndpoint =
       preferences.getString(PREF_API_ENDPOINT, apiEndpoint);
   String savedApiKey = preferences.getString(PREF_API_KEY, apiKey);
 
-  // Stringオブジェクトからchar配列へのコピー
   strlcpy(deviceId, savedDeviceId.c_str(), sizeof(deviceId));
   strlcpy(apiEndpoint, savedApiEndpoint.c_str(), sizeof(apiEndpoint));
   strlcpy(apiKey, savedApiKey.c_str(), sizeof(apiKey));
@@ -76,12 +87,14 @@ void setup() {
   wm.addParameter(&custom_api_endpoint);
   wm.addParameter(&custom_api_key);
 
-  // Wi-Fi接続の試行。接続情報がないか失敗した場合は ColorTimer-AP
-  // というアクセスポイントを起動する
+  displayStatus("Wi-Fi Setup", "Connecting...");
+
+  // Wi-Fi接続の試行。接続情報がないか失敗した場合はColorTimer-APというアクセスポイントを起動する
   if (!wm.autoConnect("ColorTimer-AP", "password")) {
+    displayError("Wi-Fi Failed");
     Serial.println("Failed to connect and hit timeout");
+    playErrorSound();
     delay(3000);
-    // リセットして再試行
     ESP.restart();
   }
 
@@ -98,14 +111,47 @@ void setup() {
     Serial.println("Configuration saved to Preferences.");
   }
 
-  Serial.println("");
-  Serial.println("Connected to Wi-Fi!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-  Serial.printf("Device ID: %s\n", deviceId);
+  Serial.println("\nConnected to Wi-Fi!");
+  displayStatus("Connected!");
+  playBeep(100);
+  delay(100);
+  playBeep(100);
+
+  // 初期ステート: Standby
+  currentState = STATE_STANDBY;
+  setLedState(LED_BLUE_BLINK);
+  displayStatus("STANDBY", "Ready to Start");
 }
 
 void loop() {
-  // メインループ(ボタン検知、LED制御、HTTPリクエスト等)はIssue5、 Issue6で実装
-  delay(100);
+  // LEDの点滅更新
+  updateLedBlink();
+
+  // ボタンの状態を更新
+  debouncer.update();
+
+  // ボタンが押された（立ち下がりエッジ）時の処理
+  if (debouncer.fell()) {
+    if (currentState == STATE_STANDBY) {
+      // Standby -> Running
+      currentState = STATE_RUNNING;
+      setLedState(LED_RED);
+      displayStatus("RUNNING", "Working...");
+      playBeep(200); // ピッ
+      Serial.println("[Action] Timer Started");
+      // TODO: Issue 6でHTTP POST処理を追加 ('start')
+    } else {
+      // Running -> Standby
+      currentState = STATE_STANDBY;
+      setLedState(LED_BLUE_BLINK);
+      displayStatus("STANDBY", "Task Stopped.");
+      playBeep(100);
+      delay(100);
+      playBeep(100); // ピピッ
+      Serial.println("[Action] Timer Stopped");
+      // TODO: Issue 6でHTTP POST処理を追加 ('stop')
+    }
+  }
+
+  delay(10);
 }
