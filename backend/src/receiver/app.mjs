@@ -27,17 +27,12 @@ export const handler = async (event) => {
         // サーバー時刻（開始・終了時点のタイムスタンプ）
         const timestamp = new Date().toISOString();
 
-        // TTL の設定 (例として、30日後に消えるように設定する場合のコード例。環境変数または要件次第ですが、一旦コメントアウトで長めに設定可能)
-        // DynamoDBのTTLはUNIXスタンプ(秒)
-        const expireAt = Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 30); // 30days
-
         const putCommand = new PutCommand({
             TableName: tableName,
             Item: {
                 DeviceId: device_id,
                 Timestamp: timestamp,
                 Action: action,
-                ExpireAt: expireAt
             }
         });
 
