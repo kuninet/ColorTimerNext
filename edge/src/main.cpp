@@ -1,7 +1,10 @@
 #include "HardwareConfig.h"
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <Bounce2.h>
+#include <HTTPClient.h>
 #include <Preferences.h>
+#include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 
 Preferences preferences;
@@ -31,6 +34,69 @@ Bounce debouncer = Bounce();
 void saveConfigCallback() {
   Serial.println("Should save config");
   shouldSaveConfig = true;
+}
+
+// API通信関数 (戻り値: 成功なら true)
+bool sendLogToApi(const char *action) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Error: WiFi not connected");
+    return false;
+  }
+
+  // Set up HTTPS connection (Insecure client to avoid managing specific root CA
+  // certificates for broad AWS API Gateway domains, per basic IoT usage)
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (client) {
+    client->setInsecure();
+  } else {
+    Serial.println("Failed to create secure client");
+    return false;
+  }
+
+  HTTPClient https;
+
+  Serial.print("Connecting to API: ");
+  Serial.println(apiEndpoint);
+
+  if (https.begin(*client, apiEndpoint)) {
+    // APIヘッダーの追加
+    https.addHeader("Content-Type", "application/json");
+    https.addHeader("x-api-key", apiKey);
+
+    // JSONペイロードの生成
+    JsonDocument doc;
+    doc["device_id"] = deviceId;
+    doc["action"] = action;
+    String requestBody;
+    serializeJson(doc, requestBody);
+
+    Serial.print("Sending POST request: ");
+    Serial.println(requestBody);
+
+    // POST送信
+    int httpCode = https.POST(requestBody);
+
+    bool success = false;
+    if (httpCode > 0) {
+      Serial.printf("HTTP Response code: %d\n", httpCode);
+      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_CREATED) {
+        // String payload = https.getString();
+        // Serial.println(payload);
+        success = true;
+      }
+    } else {
+      Serial.printf("HTTP Request failed, error: %s\n",
+                    https.errorToString(httpCode).c_str());
+    }
+
+    https.end();
+    delete client;
+    return success;
+  } else {
+    Serial.println("Unable to connect to HTTPS endpoint");
+    delete client;
+    return false;
+  }
 }
 
 void setup() {
@@ -133,23 +199,38 @@ void loop() {
   // ボタンが押された（立ち下がりエッジ）時の処理
   if (debouncer.fell()) {
     if (currentState == STATE_STANDBY) {
-      // Standby -> Running
-      currentState = STATE_RUNNING;
-      setLedState(LED_RED);
-      displayStatus("RUNNING", "Working...");
-      playBeep(200); // ピッ
-      Serial.println("[Action] Timer Started");
-      // TODO: Issue 6でHTTP POST処理を追加 ('start')
+      // Standby -> Running (Start API Request)
+      displayStatus("Sending...", "Start Timer");
+      if (sendLogToApi("start")) {
+        currentState = STATE_RUNNING;
+        setLedState(LED_RED);
+        displayStatus("RUNNING", "Working...");
+        playBeep(200); // 成功音ピッ
+        Serial.println("[Action] Timer Started");
+      } else {
+        displayError("API Send Failed");
+        playErrorSound();
+        delay(2000);
+        displayStatus("STANDBY", "Ready to Start");
+      }
+
     } else {
-      // Running -> Standby
-      currentState = STATE_STANDBY;
-      setLedState(LED_BLUE_BLINK);
-      displayStatus("STANDBY", "Task Stopped.");
-      playBeep(100);
-      delay(100);
-      playBeep(100); // ピピッ
-      Serial.println("[Action] Timer Stopped");
-      // TODO: Issue 6でHTTP POST処理を追加 ('stop')
+      // Running -> Standby (Stop API Request)
+      displayStatus("Sending...", "Stop Timer");
+      if (sendLogToApi("stop")) {
+        currentState = STATE_STANDBY;
+        setLedState(LED_BLUE_BLINK);
+        displayStatus("STANDBY", "Task Stopped.");
+        playBeep(100);
+        delay(100);
+        playBeep(100); // 終了音ピピッ
+        Serial.println("[Action] Timer Stopped");
+      } else {
+        displayError("API Send Failed");
+        playErrorSound();
+        delay(2000);
+        displayStatus("RUNNING", "Working...");
+      }
     }
   }
 
