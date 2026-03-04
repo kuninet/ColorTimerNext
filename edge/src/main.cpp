@@ -193,6 +193,17 @@ void loop() {
   // LEDの点滅更新
   updateLedBlink();
 
+  // 5秒ごとに現在のステータスをシリアルへ出力
+  static unsigned long lastStatusLog = 0;
+  if (millis() - lastStatusLog >= 5000) {
+    lastStatusLog = millis();
+    if (currentState == STATE_RUNNING) {
+      Serial.println("[STATUS] 状態: 作業中 (RUNNING) | LED: 赤点灯");
+    } else {
+      Serial.println("[STATUS] 状態: 休み中 (STANDBY) | LED: 青点滅");
+    }
+  }
+
   // ボタンの状態を更新
   debouncer.update();
 
