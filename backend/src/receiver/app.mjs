@@ -20,8 +20,8 @@ export const handler = async (event) => {
         const { device_id, action } = body;
 
         // バリデーション
-        if (!device_id || !action || !['start', 'end'].includes(action)) {
-            return buildResponse(400, { message: "Invalid payload. 'device_id' and 'action' ('start' or 'end') are required." });
+        if (!device_id || !action || !['start', 'stop'].includes(action)) {
+            return buildResponse(400, { message: "Invalid payload. 'device_id' and 'action' ('start' or 'stop') are required." });
         }
 
         // サーバー時刻（開始・終了時点のタイムスタンプ）
