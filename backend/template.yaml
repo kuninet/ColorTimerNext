@@ -165,6 +165,43 @@ Resources:
             QueryString: false
             Cookies:
               Forward: none
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt BasicAuthFunction.FunctionMetadata.FunctionARN
+
+  # ----------------------------------------------------------------------
+  # CloudFront Function for Basic Auth
+  # ----------------------------------------------------------------------
+  BasicAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      AutoPublish: true
+      FunctionConfig:
+        Comment: "Basic Authentication for Frontend"
+        Runtime: cloudfront-js-1.0
+      FunctionCode: !Sub |
+        function handler(event) {
+            var request = event.request;
+            var headers = request.headers;
+            
+            // default: admin:password
+            var expectedAuth = "Basic YWRtaW46cGFzc3dvcmQ=";
+            
+            if (
+                !headers.authorization ||
+                headers.authorization.value !== expectedAuth
+            ) {
+                return {
+                    statusCode: 401,
+                    statusDescription: "Unauthorized",
+                    headers: {
+                        "www-authenticate": { value: 'Basic realm="ColorTimerNext"' }
+                    }
+                };
+            }
+            return request;
+        }
+      Name: !Sub "${AWS::StackName}-BasicAuth"
 
   # ----------------------------------------------------------------------
   # S3 Bucket Policy (OAC Config)
