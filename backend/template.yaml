@@ -47,7 +47,6 @@ Resources:
         AllowHeaders: "'Content-Type,X-Api-Key'"
         AllowMethods: "'GET,POST,OPTIONS'"
       Auth:
-        ApiKeyRequired: true # 全メソッドに対してデフォルトでAPIキーを要求する
         UsagePlan:
           CreateUsagePlan: PER_API
           Description: "ColorTimerNext Usage Plan"
@@ -76,6 +75,8 @@ Resources:
             RestApiId: !Ref ColorTimerApi
             Method: POST
             Path: /api/logs
+            Auth:
+              ApiKeyRequired: true
 
   # ----------------------------------------------------------------------
   # Fetcher Lambda Function (Get Logs for Dashboard)
@@ -101,6 +102,8 @@ Resources:
             RestApiId: !Ref ColorTimerApi
             Method: GET
             Path: /api/logs
+            Auth:
+              ApiKeyRequired: true
 
   # ----------------------------------------------------------------------
   # Frontend S3 Bucket
