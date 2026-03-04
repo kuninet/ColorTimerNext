@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
+import { LayoutDashboard, History } from 'lucide-react';
+import Dashboard from './Dashboard';
 
 function App() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
     // API Gatewayのエンドポイント (環境変数から取得するか、Vite起動時にプロキシする想定)
@@ -32,13 +35,22 @@ function App() {
         console.error("API Fetch Error:", err);
         setError("履歴データの取得に失敗しました。");
 
-        // 開発用のダミーデータ (APIに繋がらない時のフォールバック)
-        if (import.meta.env.DEV) {
+        // 開発用または ?mock=1 指定時のダミーデータ (APIに繋がらない時のフォールバック)
+        const useMock = import.meta.env.DEV || window.location.search.includes('mock=1');
+        if (useMock) {
+          const now = Date.now();
+          const hour = 3600000;
+          const day = 24 * hour;
           setLogs([
-            { DeviceId: 'esp32-1234', Timestamp: new Date().toISOString(), Action: 'start' },
-            { DeviceId: 'esp32-1234', Timestamp: new Date(Date.now() - 3600000).toISOString(), Action: 'stop' },
-            { DeviceId: 'esp32-1234', Timestamp: new Date(Date.now() - 7200000).toISOString(), Action: 'start' },
+            { DeviceId: 'esp32-1234', Timestamp: new Date(now).toISOString(), Action: 'start' },
+            { DeviceId: 'esp32-1234', Timestamp: new Date(now - 1.5 * hour).toISOString(), Action: 'stop' },
+            { DeviceId: 'esp32-1234', Timestamp: new Date(now - 3 * hour).toISOString(), Action: 'start' },
+            { DeviceId: 'esp32-1234', Timestamp: new Date(now - day).toISOString(), Action: 'stop' },
+            { DeviceId: 'esp32-1234', Timestamp: new Date(now - day - 2 * hour).toISOString(), Action: 'start' },
+            { DeviceId: 'esp32-1234', Timestamp: new Date(now - 3 * day).toISOString(), Action: 'stop' },
+            { DeviceId: 'esp32-1234', Timestamp: new Date(now - 3 * day - 4 * hour).toISOString(), Action: 'start' },
           ]);
+          setError("APIに接続できませんでした。(モックデータを表示中)");
         }
       } finally {
         setLoading(false);
@@ -66,10 +78,35 @@ function App() {
           </div>
         )}
 
+        <div className="flex space-x-2 mb-8 bg-neutral-800/50 p-1.5 rounded-xl border border-neutral-700/50 backdrop-blur-sm w-fit mx-auto sm:mx-0">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'dashboard'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20'
+              : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700/50'
+              }`}
+          >
+            <LayoutDashboard size={18} />
+            <span>ダッシュボード</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'history'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20'
+              : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700/50'
+              }`}
+          >
+            <History size={18} />
+            <span>履歴一覧</span>
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex justify-center items-center h-40">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
           </div>
+        ) : activeTab === 'dashboard' ? (
+          <Dashboard logs={logs} />
         ) : (
           <div className="bg-neutral-800/80 backdrop-blur-md rounded-2xl shadow-xl border border-neutral-700 overflow-hidden">
             <div className="overflow-x-auto">
@@ -92,8 +129,8 @@ function App() {
                       </td>
                       <td className="p-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${log.Action === 'start'
-                            ? 'bg-blue-900/30 text-blue-400 border-blue-800'
-                            : 'bg-rose-900/30 text-rose-400 border-rose-800'
+                          ? 'bg-blue-900/30 text-blue-400 border-blue-800'
+                          : 'bg-rose-900/30 text-rose-400 border-rose-800'
                           }`}>
                           {log.Action === 'start' ? '▶ Start' : '■ Stop'}
                         </span>
