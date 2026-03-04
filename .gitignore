@@ -1,0 +1,40 @@
+# General
+.DS_Store
+.vscode/
+.idea/
+*.log
+*.tmp
+*.bak
+
+# Node.js (Frontend / CDK etc)
+node_modules/
+dist/
+build/
+.next/
+out/
+.env
+.env.*
+!.env.example
+
+# Python (AWS SAM etc)
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.aws-sam/
+
+# PlatformIO / Arduino (Edge)
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/c_cpp_properties.json
+*.bin
+*.elf
+
+# AWS / Terraform
+.aws/
+samconfig.toml
+*.tfstate
+*.tfstate.*
+.terraform/
