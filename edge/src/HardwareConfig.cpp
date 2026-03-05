@@ -82,8 +82,12 @@ void setLedState(LedColor color) {
     digitalWrite(LED_BLUE_PIN, HIGH);
     break;
   case LED_BLUE_BLINK:
-    // Initial state is on, toggle logic handled in updateLedBlink()
     digitalWrite(LED_BLUE_PIN, HIGH);
+    ledToggleState = true;
+    lastBlinkTime = millis();
+    break;
+  case LED_RED_BLINK:
+    digitalWrite(LED_RED_PIN, HIGH);
     ledToggleState = true;
     lastBlinkTime = millis();
     break;
@@ -99,6 +103,12 @@ void updateLedBlink() {
       ledToggleState = !ledToggleState;
       digitalWrite(LED_BLUE_PIN, ledToggleState ? HIGH : LOW);
     }
+  } else if (currentLedState == LED_RED_BLINK) {
+    if (millis() - lastBlinkTime >= 250) { // Toggle faster (250ms)
+      lastBlinkTime = millis();
+      ledToggleState = !ledToggleState;
+      digitalWrite(LED_RED_PIN, ledToggleState ? HIGH : LOW);
+    }
   }
 }
 
@@ -112,5 +122,34 @@ void playErrorSound() {
   for (int i = 0; i < 3; i++) {
     playBeep(100);
     delay(100);
+  }
+}
+
+// タイムアウト時のカラータイマー音（徐々に早くなる）
+// ※ 呼び出し元で delay
+// を挟まないよう、内部で時間を管理して1回分の「ピコン」を鳴らすか判定
+void playColorTimerSound() {
+  static unsigned long lastSoundTime = 0;
+  static int beepInterval = 1000; // 初期インターバル(ms)
+  static int beepCount = 0;
+
+  if (millis() - lastSoundTime >= beepInterval) {
+    lastSoundTime = millis();
+
+    // ピ・コン (高低音)
+    ledcWriteTone(BUZZER_CHANNEL, 1500); // 高音
+    delay(100);
+    ledcWriteTone(BUZZER_CHANNEL, 1000); // 低音
+    delay(150);
+    ledcWrite(BUZZER_CHANNEL, 0); // 停止
+    // 元の周波数にリセット
+    ledcSetup(BUZZER_CHANNEL, BUZZER_FREQ, BUZZER_RES);
+
+    beepCount++;
+
+    // だんだん早くする（最小200msまで）
+    if (beepCount % 5 == 0 && beepInterval > 200) {
+      beepInterval -= 150;
+    }
   }
 }
