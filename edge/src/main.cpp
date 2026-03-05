@@ -314,12 +314,8 @@ void loop() {
       wm.addParameter(&custom_api_key);
       wm.addParameter(&custom_timeout_min);
 
-      // ポータル開始
-      if (!wm.startConfigPortal("ColorTimer-AP")) {
-        Serial.println("Failed to connect or hit timeout");
-        delay(3000);
-        ESP.restart();
-      }
+      // ポータル開始 (Break設定により必ずfalseで戻るか抜ける)
+      wm.startConfigPortal("ColorTimer-AP");
 
       // 保存ボタンが押され、ポータルを抜けた場合はここに来る
       if (shouldSaveConfig) {
@@ -329,13 +325,11 @@ void loop() {
         strlcpy(apiKey, custom_api_key.getValue(), sizeof(apiKey));
         strlcpy(timeoutMin, custom_timeout_min.getValue(), sizeof(timeoutMin));
 
-        Preferences preferences;
-        preferences.begin(PREF_NAMESPACE, false);
+        // グローバルのpreferencesは既にbegin()されているのでそのまま書き込む
         preferences.putString(PREF_DEVICE_ID, deviceId);
         preferences.putString(PREF_API_ENDPOINT, apiEndpoint);
         preferences.putString(PREF_API_KEY, apiKey);
         preferences.putString(PREF_TIMEOUT_MIN, timeoutMin);
-        preferences.end();
         shouldSaveConfig = false;
 
         Serial.println("[Action] Updated settings, restarting...");
