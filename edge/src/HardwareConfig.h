@@ -23,12 +23,13 @@ void displayStatus(const char *statusStr, const char *detailStr = "");
 void displayError(const char *errorStr);
 
 // LED Functions
-enum LedColor { LED_OFF, LED_RED, LED_BLUE, LED_BLUE_BLINK };
+enum LedColor { LED_OFF, LED_RED, LED_BLUE, LED_BLUE_BLINK, LED_RED_BLINK };
 void setLedState(LedColor color);
 void updateLedBlink(); // Call this in loop()
 
 // Buzzer Functions
 void playBeep(int durationMs);
 void playErrorSound();
+void playColorTimerSound(); // タイムアウト用カラータイマー音
 
 #endif
