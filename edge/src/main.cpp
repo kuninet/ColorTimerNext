@@ -14,18 +14,23 @@ const char *PREF_NAMESPACE = "colortimer";
 const char *PREF_DEVICE_ID = "device_id";
 const char *PREF_API_ENDPOINT = "api_endpt";
 const char *PREF_API_KEY = "api_key";
+const char *PREF_TIMEOUT_MIN = "timeout_min";
 
 // メモリ保持用変数 (初期値)
 char deviceId[32] = "esp32-timer-default";
 char apiEndpoint[128] =
     "https://********.execute-api.ap-northeast-1.amazonaws.com/prod/api/logs";
 char apiKey[64] = "your_api_key_here";
+char timeoutMin[8] = "30"; // デフォルト30分
 
 bool shouldSaveConfig = false;
 
 // 稼働ステート管理
-enum TimerState { STATE_STANDBY, STATE_RUNNING };
+enum TimerState { STATE_STANDBY, STATE_RUNNING, STATE_TIMEOUT };
 TimerState currentState = STATE_STANDBY;
+
+// 長押し機能やタイムアウト計算用
+unsigned long stateStartTime = 0;
 
 // ボタンのデバウンス用インスタンス
 Bounce debouncer = Bounce();
@@ -138,20 +143,25 @@ void setup() {
   String savedApiEndpoint =
       preferences.getString(PREF_API_ENDPOINT, apiEndpoint);
   String savedApiKey = preferences.getString(PREF_API_KEY, apiKey);
+  String savedTimeoutMin = preferences.getString(PREF_TIMEOUT_MIN, timeoutMin);
 
   strlcpy(deviceId, savedDeviceId.c_str(), sizeof(deviceId));
   strlcpy(apiEndpoint, savedApiEndpoint.c_str(), sizeof(apiEndpoint));
   strlcpy(apiKey, savedApiKey.c_str(), sizeof(apiKey));
+  strlcpy(timeoutMin, savedTimeoutMin.c_str(), sizeof(timeoutMin));
 
   // カスタムパラメータの設定
   WiFiManagerParameter custom_device_id("device_id", "Device ID", deviceId, 32);
   WiFiManagerParameter custom_api_endpoint("api_endpoint", "API Endpoint URL",
                                            apiEndpoint, 128);
   WiFiManagerParameter custom_api_key("api_key", "API Gateway Key", apiKey, 64);
+  WiFiManagerParameter custom_timeout_min("timeout_min", "Timeout (minutes)",
+                                          timeoutMin, 8);
 
   wm.addParameter(&custom_device_id);
   wm.addParameter(&custom_api_endpoint);
   wm.addParameter(&custom_api_key);
+  wm.addParameter(&custom_timeout_min);
 
   displayStatus("Wi-Fi Setup", "Connecting...");
 
@@ -169,10 +179,12 @@ void setup() {
     strlcpy(deviceId, custom_device_id.getValue(), sizeof(deviceId));
     strlcpy(apiEndpoint, custom_api_endpoint.getValue(), sizeof(apiEndpoint));
     strlcpy(apiKey, custom_api_key.getValue(), sizeof(apiKey));
+    strlcpy(timeoutMin, custom_timeout_min.getValue(), sizeof(timeoutMin));
 
     preferences.putString(PREF_DEVICE_ID, deviceId);
     preferences.putString(PREF_API_ENDPOINT, apiEndpoint);
     preferences.putString(PREF_API_KEY, apiKey);
+    preferences.putString(PREF_TIMEOUT_MIN, timeoutMin);
 
     Serial.println("Configuration saved to Preferences.");
   }
@@ -185,7 +197,8 @@ void setup() {
 
   // 初期ステート: Standby
   currentState = STATE_STANDBY;
-  setLedState(LED_BLUE_BLINK);
+  setLedState(LED_RED); // 待機＝赤点灯
+  displayStatus("STANDBY", "Ready to Start");
   displayStatus("STANDBY", "Ready to Start");
 }
 
@@ -198,10 +211,29 @@ void loop() {
   if (millis() - lastStatusLog >= 5000) {
     lastStatusLog = millis();
     if (currentState == STATE_RUNNING) {
-      Serial.println("[STATUS] 状態: 作業中 (RUNNING) | LED: 赤点灯");
+      Serial.println("[STATUS] 状態: 作業中 (RUNNING) | LED: 青点灯");
+    } else if (currentState == STATE_TIMEOUT) {
+      Serial.println(
+          "[STATUS] 状態: タイムアウト (TIMEOUT) | LED: 青点滅 & アラーム");
     } else {
-      Serial.println("[STATUS] 状態: 休み中 (STANDBY) | LED: 青点滅");
+      Serial.println("[STATUS] 状態: 休み中 (STANDBY) | LED: 赤点灯");
     }
+  }
+
+  // タイムアウト検知処理
+  if (currentState == STATE_RUNNING) {
+    long timeoutMs = atol(timeoutMin) * 60 * 1000;
+    if (millis() - stateStartTime >= timeoutMs) {
+      currentState = STATE_TIMEOUT;
+      setLedState(LED_BLUE_BLINK); // タイムアウト＝青点滅
+      displayStatus("TIMEOUT", "Time's up!");
+      Serial.println("[Action] Timer Timeout Reached");
+    }
+  }
+
+  // タイムアウト状態ならカラータイマー音を非同期で鳴らす
+  if (currentState == STATE_TIMEOUT) {
+    playColorTimerSound();
   }
 
   // ボタンの状態を更新
