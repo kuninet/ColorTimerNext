@@ -296,7 +296,10 @@ void loop() {
       delay(100);
 
       WiFiManager wm;
+
+      // 保存時に shouldSaveConfig が呼ばれるようにセット
       wm.setSaveConfigCallback(saveConfigCallback);
+      shouldSaveConfig = false; // 初期化しておく
 
       // カスタムパラメータを再セットしてAP開始
       WiFiManagerParameter custom_device_id("device_id", "Device ID", deviceId,
@@ -319,22 +322,30 @@ void loop() {
         ESP.restart();
       }
 
-      // 保存されたならPreferencesへ書き込み、再起動
-      strlcpy(deviceId, custom_device_id.getValue(), sizeof(deviceId));
-      strlcpy(apiEndpoint, custom_api_endpoint.getValue(), sizeof(apiEndpoint));
-      strlcpy(apiKey, custom_api_key.getValue(), sizeof(apiKey));
-      strlcpy(timeoutMin, custom_timeout_min.getValue(), sizeof(timeoutMin));
+      // 保存ボタンが押され、ポータルを抜けた場合はここに来る
+      if (shouldSaveConfig) {
+        strlcpy(deviceId, custom_device_id.getValue(), sizeof(deviceId));
+        strlcpy(apiEndpoint, custom_api_endpoint.getValue(),
+                sizeof(apiEndpoint));
+        strlcpy(apiKey, custom_api_key.getValue(), sizeof(apiKey));
+        strlcpy(timeoutMin, custom_timeout_min.getValue(), sizeof(timeoutMin));
 
-      Preferences preferences;
-      preferences.begin(PREF_NAMESPACE, false);
-      preferences.putString(PREF_DEVICE_ID, deviceId);
-      preferences.putString(PREF_API_ENDPOINT, apiEndpoint);
-      preferences.putString(PREF_API_KEY, apiKey);
-      preferences.putString(PREF_TIMEOUT_MIN, timeoutMin);
-      preferences.end();
+        Preferences preferences;
+        preferences.begin(PREF_NAMESPACE, false);
+        preferences.putString(PREF_DEVICE_ID, deviceId);
+        preferences.putString(PREF_API_ENDPOINT, apiEndpoint);
+        preferences.putString(PREF_API_KEY, apiKey);
+        preferences.putString(PREF_TIMEOUT_MIN, timeoutMin);
+        preferences.end();
+        shouldSaveConfig = false;
 
-      Serial.println("[Action] Updated settings, restarting...");
-      displayStatus("SAVED", "Restarting...");
+        Serial.println("[Action] Updated settings, restarting...");
+        displayStatus("SAVED", "Restarting...");
+      } else {
+        Serial.println(
+            "[Action] Config portal closed without saving, restarting...");
+        displayStatus("CANCELED", "Restarting...");
+      }
       delay(1000);
       ESP.restart();
     } else {
