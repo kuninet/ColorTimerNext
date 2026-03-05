@@ -207,40 +207,136 @@ void loop() {
   // ボタンの状態を更新
   debouncer.update();
 
+  static unsigned long buttonPressStartTime = 0;
+  static bool beep3sDone = false;
+  static bool beep5sDone = false;
+
   // ボタンが押された（立ち下がりエッジ）時の処理
   if (debouncer.fell()) {
-    if (currentState == STATE_STANDBY) {
-      // Standby -> Running (Start API Request)
-      displayStatus("Sending...", "Start Timer");
-      if (sendLogToApi("start")) {
-        currentState = STATE_RUNNING;
-        setLedState(LED_RED);
-        displayStatus("RUNNING", "Working...");
-        playBeep(200); // 成功音ピッ
-        Serial.println("[Action] Timer Started");
-      } else {
-        displayError("API Send Failed");
-        playErrorSound();
-        delay(2000);
-        displayStatus("STANDBY", "Ready to Start");
-      }
+    buttonPressStartTime = millis();
+    beep3sDone = false;
+    beep5sDone = false;
+  }
 
-    } else {
-      // Running -> Standby (Stop API Request)
-      displayStatus("Sending...", "Stop Timer");
-      if (sendLogToApi("stop")) {
-        currentState = STATE_STANDBY;
-        setLedState(LED_BLUE_BLINK);
-        displayStatus("STANDBY", "Task Stopped.");
+  // ボタンが押されている間の処理（長押し検知・ビープ音鳴動）
+  if (!debouncer.read()) { // !HIGH (LOW)
+                           // の時、ボタンが押されていると仮定(INPUT_PULLUP)
+    if (buttonPressStartTime > 0) {
+      unsigned long pressedDuration = millis() - buttonPressStartTime;
+      // 3秒経過
+      if (pressedDuration >= 3000 && pressedDuration < 5000 && !beep3sDone) {
+        playBeep(100); // 3秒ピッ
+        displayStatus("Hold: 3s", "Release for AP");
+        beep3sDone = true;
+      }
+      // 5秒経過
+      else if (pressedDuration >= 5000 && !beep5sDone) {
         playBeep(100);
         delay(100);
-        playBeep(100); // 終了音ピピッ
-        Serial.println("[Action] Timer Stopped");
-      } else {
-        displayError("API Send Failed");
-        playErrorSound();
-        delay(2000);
-        displayStatus("RUNNING", "Working...");
+        playBeep(100); // 5秒ピピッ
+        displayStatus("Hold: 5s", "Release to Reset");
+        beep5sDone = true;
+      }
+    }
+  }
+
+  // ボタンが離された（立ち上がりエッジ）時の処理
+  if (debouncer.rose()) {
+    unsigned long pressedDuration = millis() - buttonPressStartTime;
+    buttonPressStartTime = 0;
+
+    if (pressedDuration >= 5000) {
+      // 5秒以上長押し -> 完全初期化
+      Serial.println("[Action] Reset to default settings");
+      displayStatus("RESETTING...", "Clearing WiFi");
+      WiFiManager wm;
+      wm.resetSettings();
+      delay(1000);
+      ESP.restart(); // 再起動して初期状態へ
+    } else if (pressedDuration >= 3000) {
+      // 3秒〜5秒長押し -> 設定ポータル起動（オンデマンドAP）
+      Serial.println("[Action] Starting Config Portal...");
+      displayStatus("CONFIG MODE", "Connect to AP");
+      setLedState(LED_BLUE_BLINK); // 設定モード中は青点滅
+
+      WiFiManager wm;
+
+      // カスタムパラメータを再セットしてAP開始
+      WiFiManagerParameter custom_device_id("device_id", "Device ID", deviceId,
+                                            32);
+      WiFiManagerParameter custom_api_endpoint(
+          "api_endpoint", "API Endpoint URL", apiEndpoint, 128);
+      WiFiManagerParameter custom_api_key("api_key", "API Gateway Key", apiKey,
+                                          64);
+      WiFiManagerParameter custom_timeout_min(
+          "timeout_min", "Timeout (minutes)", timeoutMin, 8);
+      wm.addParameter(&custom_device_id);
+      wm.addParameter(&custom_api_endpoint);
+      wm.addParameter(&custom_api_key);
+      wm.addParameter(&custom_timeout_min);
+
+      // ポータル開始
+      if (!wm.startConfigPortal("ColorTimer-AP")) {
+        Serial.println("Failed to connect or hit timeout");
+        delay(3000);
+        ESP.restart();
+      }
+
+      // 保存されたならPreferencesへ書き込み、再起動
+      strlcpy(deviceId, custom_device_id.getValue(), sizeof(deviceId));
+      strlcpy(apiEndpoint, custom_api_endpoint.getValue(), sizeof(apiEndpoint));
+      strlcpy(apiKey, custom_api_key.getValue(), sizeof(apiKey));
+      strlcpy(timeoutMin, custom_timeout_min.getValue(), sizeof(timeoutMin));
+
+      Preferences preferences;
+      preferences.begin(PREF_NAMESPACE, false);
+      preferences.putString(PREF_DEVICE_ID, deviceId);
+      preferences.putString(PREF_API_ENDPOINT, apiEndpoint);
+      preferences.putString(PREF_API_KEY, apiKey);
+      preferences.putString(PREF_TIMEOUT_MIN, timeoutMin);
+      preferences.end();
+
+      Serial.println("[Action] Updated settings, restarting...");
+      displayStatus("SAVED", "Restarting...");
+      delay(1000);
+      ESP.restart();
+    } else {
+      // --- 短押し (3秒未満) の場合は本来のAPI通信処理 ---
+      if (currentState == STATE_STANDBY) {
+        // Standby -> Running (Start API Request)
+        displayStatus("Sending...", "Start Timer");
+        if (sendLogToApi("start")) {
+          currentState = STATE_RUNNING;
+          stateStartTime = millis(); // 開始時間を記録
+          setLedState(LED_BLUE);     // 作業中＝青点灯
+          displayStatus("RUNNING", "Working...");
+          playBeep(200); // 成功音ピッ
+          Serial.println("[Action] Timer Started");
+        } else {
+          displayError("API Send Failed");
+          playErrorSound();
+          delay(2000);
+          displayStatus("STANDBY", "Ready to Start");
+        }
+
+      } else if (currentState == STATE_RUNNING ||
+                 currentState == STATE_TIMEOUT) {
+        // Running/Timeout -> Standby (Stop API Request)
+        displayStatus("Sending...", "Stop Timer");
+        if (sendLogToApi("stop")) {
+          currentState = STATE_STANDBY;
+          setLedState(LED_RED); // 待機＝赤点灯に戻る
+          displayStatus("STANDBY", "Task Stopped.");
+          playBeep(100);
+          delay(100);
+          playBeep(100); // 終了音ピピッ
+          Serial.println("[Action] Timer Stopped");
+        } else {
+          displayError("API Send Failed");
+          playErrorSound();
+          delay(2000);
+          displayStatus("RUNNING", "Working...");
+        }
       }
     }
   }
