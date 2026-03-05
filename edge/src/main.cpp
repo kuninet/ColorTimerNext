@@ -291,7 +291,12 @@ void loop() {
       displayStatus("CONFIG MODE", "Connect to AP");
       setLedState(LED_BLUE_BLINK); // 設定モード中は青点滅
 
+      // 既存の接続を破棄してクリーンな状態でAPモードを開始する
+      WiFi.disconnect(true);
+      delay(100);
+
       WiFiManager wm;
+      wm.setSaveConfigCallback(saveConfigCallback);
 
       // カスタムパラメータを再セットしてAP開始
       WiFiManagerParameter custom_device_id("device_id", "Device ID", deviceId,
