@@ -94,6 +94,11 @@ bool ensureSystemTimeSync() {
   return false;
 }
 
+void clearStoredSettings(WiFiManager &wm) {
+  preferences.clear();
+  wm.resetSettings();
+}
+
 // WiFiManagerの設定が保存された際に呼ばれるコールバック
 void saveConfigCallback() {
   Serial.println("Should save config");
@@ -190,8 +195,7 @@ void setup() {
     displayStatus("RESETTING", "Clearing Settings");
     Serial.println("Reset button is pressed! Clearing all settings...");
     playBeep(500);
-    preferences.clear();
-    wm.resetSettings();
+    clearStoredSettings(wm);
     displayStatus("CLEARED", "Please Reboot.");
     Serial.println(
         "Settings cleared. Please connect to 'ColorTimer-AP' to reconfigure.");
@@ -345,9 +349,11 @@ void loop() {
     if (pressedDuration >= 5000) {
       // 5秒以上長押し -> 完全初期化
       Serial.println("[Action] Reset to default settings");
-      displayStatus("RESETTING...", "Clearing WiFi");
+      displayStatus("RESETTING", "Clearing Settings");
       WiFiManager wm;
-      wm.resetSettings();
+      clearStoredSettings(wm);
+      Serial.println(
+          "[Action] Settings cleared. Restarting into initial setup state.");
       delay(1000);
       ESP.restart(); // 再起動して初期状態へ
     } else if (pressedDuration >= 3000) {
