@@ -4,53 +4,79 @@ set -e
 # リポジトリのルートディレクトリへ移動
 cd "$(dirname "$0")/../.."
 
-if [ "$#" -ne 3 ]; then
-    echo "Usage: ./scripts/aws/manage-basic-auth.sh [add|remove] <username> <password>"
-    echo "Example: ./scripts/aws/manage-basic-auth.sh add user1 pass1"
+STORE_FILE="backend/basic-auth-users.local.json"
+
+usage() {
+    echo "Usage:"
+    echo "  ./scripts/aws/manage-basic-auth.sh add <username> <password>"
+    echo "  ./scripts/aws/manage-basic-auth.sh remove <username>"
+    echo "  ./scripts/aws/manage-basic-auth.sh list"
+    echo "  ./scripts/aws/manage-basic-auth.sh print-parameter"
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "Error: jq is required."
     exit 1
 fi
 
-ACTION=$1
-USER=$2
-PASS=$3
-# Mac/Linux両対応のbase64エンコード
-AUTH_B64=$(printf "%s:%s" "$USER" "$PASS" | base64)
-AUTH_STRING="\"Basic ${AUTH_B64}\""
+ACTION=${1:-}
 
-TEMPLATE_FILE="backend/template.yaml"
+if [ -z "$ACTION" ]; then
+    usage
+    exit 1
+fi
+
+if [ ! -f "$STORE_FILE" ]; then
+    printf '[]\n' > "$STORE_FILE"
+fi
+
+print_deploy_hint() {
+    PARAM_VALUE=$(jq -c '[.[].auth]' "$STORE_FILE")
+    echo "Saved credentials to $STORE_FILE (gitignored)."
+    echo "Deploy with:"
+    echo "  cd backend"
+    echo "  sam deploy --parameter-overrides BasicAuthValidAuths='$PARAM_VALUE'"
+}
 
 if [ "$ACTION" == "add" ]; then
-    echo "Adding/Updating user '$USER'..."
-    # 既に存在する場合は無視する簡易的なチェック
-    if grep -q "$AUTH_STRING" "$TEMPLATE_FILE"; then
-        echo "User '$USER' is already configured."
-    else
-        # 簡易的に配列の最後の要素か、先頭に追加する (sed等で無理やり挿入)
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' -e "/var validAuths = \[/a\\
-                $AUTH_STRING,
-" "$TEMPLATE_FILE"
-        else
-          sed -i "/var validAuths = \[/a\                $AUTH_STRING," "$TEMPLATE_FILE"
-        fi
-        echo "User '$USER' added successfully."
+    if [ "$#" -ne 3 ]; then
+        usage
+        exit 1
     fi
 
+    USER=$2
+    PASS=$3
+    AUTH_B64=$(printf "%s:%s" "$USER" "$PASS" | base64 | tr -d '\n')
+    AUTH_STRING="Basic ${AUTH_B64}"
+    TMP_FILE=$(mktemp)
+
+    jq --arg user "$USER" --arg auth "$AUTH_STRING" '
+      map(select(.username != $user)) + [{username: $user, auth: $auth}]
+      | sort_by(.username)
+    ' "$STORE_FILE" > "$TMP_FILE"
+    mv "$TMP_FILE" "$STORE_FILE"
+
+    echo "Added/updated user '$USER'."
+    print_deploy_hint
 elif [ "$ACTION" == "remove" ]; then
-    echo "Removing user '$USER'..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' -e "/$AUTH_STRING/d" "$TEMPLATE_FILE"
-    else
-      sed -i "/$AUTH_STRING/d" "$TEMPLATE_FILE"
+    if [ "$#" -ne 2 ]; then
+        usage
+        exit 1
     fi
-    echo "User '$USER' removed."
+
+    USER=$2
+    TMP_FILE=$(mktemp)
+    jq --arg user "$USER" 'map(select(.username != $user))' "$STORE_FILE" > "$TMP_FILE"
+    mv "$TMP_FILE" "$STORE_FILE"
+
+    echo "Removed user '$USER' if present."
+    print_deploy_hint
+elif [ "$ACTION" == "list" ]; then
+    jq -r 'if length == 0 then "No users configured." else .[] | .username end' "$STORE_FILE"
+elif [ "$ACTION" == "print-parameter" ]; then
+    jq -c '[.[].auth]' "$STORE_FILE"
 else
-    echo "Invalid action. Use 'add' or 'remove'."
+    echo "Invalid action: $ACTION"
+    usage
     exit 1
 fi
-
-echo "Credentials updated locally in backend/template.yaml."
-echo "To apply changes to AWS, please deploy the backend stack:"
-echo "  cd backend"
-echo "  sam build"
-echo "  sam deploy"
