@@ -34,8 +34,10 @@ print_deploy_hint() {
     PARAM_VALUE=$(jq -c '[.[].auth]' "$STORE_FILE")
     echo "Saved credentials to $STORE_FILE (gitignored)."
     echo "Deploy with:"
+    echo "  ./scripts/aws/deploy-backend.sh"
+    echo "Or run manually:"
     echo "  cd backend"
-    echo "  sam deploy --parameter-overrides BasicAuthValidAuths='$PARAM_VALUE'"
+    echo "  sam deploy --parameter-overrides BasicAuthValidAuths='$PARAM_VALUE' LogRetentionDays=\${LOG_RETENTION_DAYS:-365}"
 }
 
 if [ "$ACTION" == "add" ]; then
