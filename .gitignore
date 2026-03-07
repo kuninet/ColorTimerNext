@@ -42,3 +42,6 @@ backend/basic-auth-users.local.json
 
 ~*
 wk_*
+_auto*
+\#auto*
+*-backup*
