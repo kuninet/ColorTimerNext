@@ -5,6 +5,13 @@ Description: >
 
   SAM Template for ColorTimer Next Project (API Gateway + DynamoDB)
 
+Parameters:
+  BasicAuthValidAuths:
+    Type: String
+    NoEcho: true
+    Default: '[]'
+    Description: JSON array of allowed Authorization header values for CloudFront Basic Auth.
+
 Globals:
   Function:
     Timeout: 5
@@ -187,10 +194,7 @@ Resources:
             var request = event.request;
             var headers = request.headers;
             
-            // Allow multiple users
-            var validAuths = [
-                "Basic YWRtaW46cGFzc3dvcmQ=" // admin:password
-            ];
+            var validAuths = ${BasicAuthValidAuths};
             
             if (
                 !headers.authorization ||

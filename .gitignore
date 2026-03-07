@@ -35,9 +35,10 @@ __pycache__/
 # AWS / Terraform
 .aws/
 samconfig.toml
+backend/basic-auth-users.local.json
 *.tfstate
 *.tfstate.*
 .terraform/
 
 ~*
-
+wk_*
