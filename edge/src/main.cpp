@@ -6,6 +6,7 @@
 #include <Preferences.h>
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
+#include <time.h>
 
 Preferences preferences;
 
@@ -24,6 +25,39 @@ char apiKey[64] = "your_api_key_here";
 char timeoutMin[8] = "30"; // デフォルト30分
 
 bool shouldSaveConfig = false;
+bool systemTimeSynchronized = false;
+
+const char *NTP_PRIMARY_SERVER = "time.aws.com";
+const char *NTP_SECONDARY_SERVER = "pool.ntp.org";
+const char *NTP_TERTIARY_SERVER = "ntp.nict.jp";
+constexpr time_t MIN_VALID_UNIX_TIME = 1704067200; // 2024-01-01T00:00:00Z
+constexpr unsigned long TIME_SYNC_TIMEOUT_MS = 15000;
+constexpr unsigned long TIME_SYNC_POLL_INTERVAL_MS = 250;
+constexpr unsigned long TLS_HANDSHAKE_TIMEOUT_SEC = 15;
+
+// Amazon Root CA 1 for execute-api.*.amazonaws.com certificates.
+const char *AWS_ROOT_CA = R"CERT(
+-----BEGIN CERTIFICATE-----
+MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+rqXRfboQnoZsG4q5WTP468SQvvG5
+-----END CERTIFICATE-----
+)CERT";
 
 // 稼働ステート管理
 enum TimerState { STATE_STANDBY, STATE_RUNNING, STATE_TIMEOUT };
@@ -34,6 +68,31 @@ unsigned long stateStartTime = 0;
 
 // ボタンのデバウンス用インスタンス
 Bounce debouncer = Bounce();
+
+bool hasValidSystemTime() { return time(nullptr) >= MIN_VALID_UNIX_TIME; }
+
+bool ensureSystemTimeSync() {
+  if (systemTimeSynchronized && hasValidSystemTime()) {
+    return true;
+  }
+
+  Serial.println("Synchronizing system clock for TLS validation...");
+  configTime(0, 0, NTP_PRIMARY_SERVER, NTP_SECONDARY_SERVER, NTP_TERTIARY_SERVER);
+
+  const unsigned long startedAt = millis();
+  while (millis() - startedAt < TIME_SYNC_TIMEOUT_MS) {
+    if (hasValidSystemTime()) {
+      systemTimeSynchronized = true;
+      Serial.printf("System time synchronized: %ld\n",
+                    static_cast<long>(time(nullptr)));
+      return true;
+    }
+    delay(TIME_SYNC_POLL_INTERVAL_MS);
+  }
+
+  Serial.println("Failed to synchronize system clock; TLS connection aborted.");
+  return false;
+}
 
 // WiFiManagerの設定が保存された際に呼ばれるコールバック
 void saveConfigCallback() {
@@ -48,11 +107,14 @@ bool sendLogToApi(const char *action) {
     return false;
   }
 
-  // Set up HTTPS connection (Insecure client to avoid managing specific root CA
-  // certificates for broad AWS API Gateway domains, per basic IoT usage)
+  if (!ensureSystemTimeSync()) {
+    return false;
+  }
+
   WiFiClientSecure *client = new WiFiClientSecure;
   if (client) {
-    client->setInsecure();
+    client->setCACert(AWS_ROOT_CA);
+    client->setHandshakeTimeout(TLS_HANDSHAKE_TIMEOUT_SEC);
   } else {
     Serial.println("Failed to create secure client");
     return false;
@@ -190,6 +252,9 @@ void setup() {
   }
 
   Serial.println("\nConnected to Wi-Fi!");
+  if (!ensureSystemTimeSync()) {
+    Serial.println("Warning: time sync did not complete during setup.");
+  }
   displayStatus("Connected!");
   playBeep(100);
   delay(100);
