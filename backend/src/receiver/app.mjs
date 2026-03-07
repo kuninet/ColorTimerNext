@@ -6,6 +6,9 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 // テーブル名は環境変数から取得
 const tableName = process.env.TABLE_NAME;
+const retentionDays = Number.parseInt(process.env.LOG_RETENTION_DAYS ?? "365", 10);
+const normalizedRetentionDays = Number.isNaN(retentionDays) || retentionDays <= 0 ? 365 : retentionDays;
+const retentionSeconds = normalizedRetentionDays * 24 * 60 * 60;
 
 export const handler = async (event) => {
     console.log("Received event:", JSON.stringify(event));
@@ -25,7 +28,9 @@ export const handler = async (event) => {
         }
 
         // サーバー時刻（開始・終了時点のタイムスタンプ）
-        const timestamp = new Date().toISOString();
+        const now = new Date();
+        const timestamp = now.toISOString();
+        const expireAt = Math.floor(now.getTime() / 1000) + retentionSeconds;
 
         const putCommand = new PutCommand({
             TableName: tableName,
@@ -33,6 +38,7 @@ export const handler = async (event) => {
                 DeviceId: device_id,
                 Timestamp: timestamp,
                 Action: action,
+                ExpireAt: expireAt,
             }
         });
 
@@ -43,7 +49,8 @@ export const handler = async (event) => {
             data: {
                 device_id,
                 action,
-                timestamp
+                timestamp,
+                expire_at: expireAt
             }
         });
 

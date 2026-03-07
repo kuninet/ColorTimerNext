@@ -11,6 +11,10 @@ Parameters:
     NoEcho: true
     Default: '[]'
     Description: JSON array of allowed Authorization header values for CloudFront Basic Auth.
+  LogRetentionDays:
+    Type: Number
+    Default: 365
+    Description: Number of days to retain device logs before DynamoDB TTL expires them.
 
 Globals:
   Function:
@@ -72,6 +76,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref ColorTimerLogsTable
+          LOG_RETENTION_DAYS: !Ref LogRetentionDays
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ColorTimerLogsTable
